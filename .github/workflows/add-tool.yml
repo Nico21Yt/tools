@@ -1,0 +1,86 @@
+name: 添加工具
+
+on:
+  issues:
+    types: [opened]
+
+permissions:
+  contents: write
+  issues: write
+
+concurrency:
+  group: add-tool
+  cancel-in-progress: false
+
+jobs:
+  add:
+    # 只处理仓库主人开的、带 add-tool 标签的 issue
+    if: >-
+      contains(github.event.issue.labels.*.name, 'add-tool') &&
+      github.event.issue.user.login == github.repository_owner
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/github-script@v7
+        with:
+          script: |
+            const { owner, repo } = context.repo;
+            const issue = context.payload.issue;
+
+            // 解析 issue 表单：### 标题\n\n值
+            const fields = {};
+            for (const part of (issue.body || '').split(/^### /m).slice(1)) {
+              const [label, ...rest] = part.split('\n');
+              const value = rest.join('\n').trim();
+              fields[label.trim()] = value === '_No response_' ? '' : value;
+            }
+            const url = (fields['链接'] || '').trim();
+            const category = (fields['分类'] || '其他').trim();
+            let name = (fields['名称（可选）'] || '').trim();
+            let note = (fields['一句话说明（可选）'] || '').replace(/\s+/g, ' ').trim();
+
+            const reply = async (msg) => {
+              await github.rest.issues.createComment({ owner, repo, issue_number: issue.number, body: msg });
+              await github.rest.issues.update({ owner, repo, issue_number: issue.number, state: 'closed' });
+            };
+
+            if (!/^https?:\/\/\S+$/.test(url)) return reply(`链接格式不对：\`${url}\``);
+
+            // GitHub repo：自动补名称和简介
+            const gh = url.match(/^https?:\/\/github\.com\/([^/\s]+)\/([^/\s#?]+)/);
+            if (gh) {
+              const repoName = gh[2].replace(/\.git$/, '');
+              if (!name) name = repoName;
+              if (!note) {
+                try {
+                  const { data } = await github.rest.repos.get({ owner: gh[1], repo: repoName });
+                  note = data.description || '';
+                } catch (e) {}
+              }
+            }
+            if (!name) name = new URL(url).hostname.replace(/^www\./, '');
+
+            const { data: file } = await github.rest.repos.getContent({ owner, repo, path: 'README.md' });
+            const lines = Buffer.from(file.content, 'base64').toString('utf8').split('\n');
+
+            if (lines.some(l => l.includes(`](${url})`))) return reply('已经收藏过了。');
+
+            let start = lines.findIndex(l => l.trim() === `## ${category}`);
+            if (start === -1) {
+              lines.push('', `## ${category}`, '');
+              start = lines.length - 2;
+            }
+            let end = lines.findIndex((l, i) => i > start && l.startsWith('## '));
+            if (end === -1) end = lines.length;
+            // 插在该分类最后一条之后
+            let insertAt = start + 1;
+            for (let i = start + 1; i < end; i++) if (lines[i].startsWith('- ')) insertAt = i + 1;
+            const entry = `- [${name}](${url})` + (note ? ` — ${note}` : '');
+            if (insertAt === start + 1) lines.splice(insertAt, 0, '', entry);
+            else lines.splice(insertAt, 0, entry);
+
+            await github.rest.repos.createOrUpdateFileContents({
+              owner, repo, path: 'README.md', sha: file.sha,
+              message: `Add ${name} to ${category}`,
+              content: Buffer.from(lines.join('\n')).toString('base64'),
+            });
+            await reply(`已加入「${category}」：\n\n${entry}`);

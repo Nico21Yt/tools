@@ -1,0 +1,35 @@
+name: 添加工具
+description: 收藏一个工具或 repo，提交后自动加入 README
+title: "添加工具"
+labels: ["add-tool"]
+body:
+  - type: input
+    id: url
+    attributes:
+      label: 链接
+      placeholder: https://github.com/owner/repo
+    validations:
+      required: true
+  - type: dropdown
+    id: category
+    attributes:
+      label: 分类
+      options:
+        - AI 与 Agent
+        - 开发与终端
+        - 科研与论文
+        - 效率与笔记
+        - Mac 应用
+        - 其他
+    validations:
+      required: true
+  - type: input
+    id: name
+    attributes:
+      label: 名称（可选）
+      description: 留空则用链接里的 repo 名或网站域名
+  - type: textarea
+    id: note
+    attributes:
+      label: 一句话说明（可选）
+      description: 留空且是 GitHub repo 时，自动用 repo 简介
