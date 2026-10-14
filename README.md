@@ -15,6 +15,8 @@
 
 ## 开发与终端
 
+- [cli](https://github.com/cli/cli) — GitHub’s official command line tool
+
 ## 科研与论文
 
 ## 效率与笔记
